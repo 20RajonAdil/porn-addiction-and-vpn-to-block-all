@@ -1,6 +1,8 @@
 package com.maar.shield
 
 import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
@@ -41,7 +43,10 @@ class MainActivity : Activity() {
         offBtn = Button(this).apply { text = "Turn OFF"; setOnClickListener { showUnlock() } }
         val lock = Button(this).apply {
             text = "Lock it down (Always-on VPN)"
-            setOnClickListener { startActivity(Intent(Settings.ACTION_VPN_SETTINGS)) }
+            setOnClickListener {
+                Unlock.grant(this@MainActivity, 90_000) // short window so you can open VPN settings
+                startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+            }
         }
         root.addView(onBtn); root.addView(offBtn); root.addView(lock)
         root.addView(tv("Tip: in VPN settings tap the gear next to MAAR Shield and enable " +
@@ -67,6 +72,18 @@ class MainActivity : Activity() {
                 "While it is on, no other VPN can be connected.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("I understand, turn ON") { _, _ ->
+                if (!isAdmin()) {
+                    Toast.makeText(this, "Step 1: activate uninstall protection", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                        .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminName())
+                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Stops MAAR Shield being uninstalled without the 5 passwords."))
+                    return@setPositiveButton
+                }
+                if (!guardOn()) {
+                    Toast.makeText(this, "Step 2: enable \"MAAR Shield guard\" under Installed apps, then come back and tap Turn ON again", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    return@setPositiveButton
+                }
                 val i = VpnService.prepare(this)
                 if (i != null) startActivityForResult(i, 1) else startShield()
             }.show()
@@ -76,6 +93,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
         if (req == 1 && res == RESULT_OK) startShield()
+    }
+
+    private fun adminName() = ComponentName(this, AdminReceiver::class.java)
+    private fun isAdmin() = (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).isAdminActive(adminName())
+    private fun guardOn(): Boolean {
+        val s = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        return s.contains("$packageName/")
     }
 
     private fun startShield() {
@@ -114,7 +138,8 @@ class MainActivity : Activity() {
     private fun stopShield() {
         startService(Intent(this, BlockerVpnService::class.java).setAction(BlockerVpnService.ACTION_STOP))
         Unlock.setEnabled(this, false)
-        Toast.makeText(this, "Protection turned off", Toast.LENGTH_LONG).show()
+        try { (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).removeActiveAdmin(adminName()) } catch (_: Exception) {}
+        Toast.makeText(this, "Protection turned off. App can now be uninstalled.", Toast.LENGTH_LONG).show()
         refresh()
     }
 }

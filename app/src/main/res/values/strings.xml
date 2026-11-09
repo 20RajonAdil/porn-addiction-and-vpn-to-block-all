@@ -1,0 +1,3 @@
+<resources>
+    <string name="guard_desc">MAAR Shield guard: stops MAAR Shield from being uninstalled, force-stopped or switched off while protection is on.</string>
+</resources>

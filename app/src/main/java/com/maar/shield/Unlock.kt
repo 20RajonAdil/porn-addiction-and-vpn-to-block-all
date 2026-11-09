@@ -39,4 +39,6 @@ object Unlock {
     fun complete(c: Context) = stage(c) >= TOTAL
     fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
     fun setEnabled(c: Context, v: Boolean) = prefs(c).edit().putBoolean("enabled", v).apply()
+    fun graceUntil(c: Context) = prefs(c).getLong("grace", 0L)
+    fun grant(c: Context, ms: Long) = prefs(c).edit().putLong("grace", System.currentTimeMillis() + ms).apply()
 }
